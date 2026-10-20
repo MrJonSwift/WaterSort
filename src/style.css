@@ -1,0 +1,325 @@
+:root {
+  /* Game palette is published from src/game/palette.ts as --c-0 … --c-7. */
+  --bg: #0b1020;
+  --text: #eef2ff;
+  --muted: #9aa6c8;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(120% 80% at 50% -10%, #1e2a52 0%, rgba(11, 16, 32, 0) 55%),
+    radial-gradient(80% 60% at 92% 8%, rgba(58, 134, 255, 0.14), rgba(11, 16, 32, 0) 60%),
+    radial-gradient(70% 60% at 4% 28%, rgba(160, 108, 213, 0.12), rgba(11, 16, 32, 0) 60%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+#app {
+  position: relative;
+  min-height: 100dvh;
+  max-width: 30rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  padding: calc(env(safe-area-inset-top) + 1rem)
+    calc(env(safe-area-inset-right) + 1rem)
+    calc(env(safe-area-inset-bottom) + 1rem)
+    calc(env(safe-area-inset-left) + 1rem);
+  touch-action: manipulation;
+}
+
+/*
+ * Water stage: one canvas over the whole app. Liquid is drawn here (behind the
+ * glass chrome), particles ride above the controls. Never interactive.
+ */
+.stage {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------- HUD ---- */
+
+.hud {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  background: linear-gradient(180deg, #ffffff, #a9c2ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.moves {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------------- board ---- */
+
+.board {
+  position: relative;
+  width: 100%;
+  /* The generous top padding is "sky": headroom for the pour animation. */
+  padding: 3.5rem 0.75rem 1.25rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(3.1rem, 1fr));
+  gap: 0.9rem 0.7rem;
+  justify-items: center;
+  border-radius: 1.4rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* -------------------------------------------------------------- tubes ---- */
+
+/*
+ * Tubes are glass chrome + hit targets. Their transform is written by the
+ * water stage (never animate transform here), and the liquid behind the glass
+ * is drawn on the canvas.
+ */
+.tube {
+  position: relative;
+  z-index: 2;
+  width: 3.1rem;
+  height: 8rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 0.95rem 0.95rem 1.6rem 1.6rem;
+  cursor: pointer;
+}
+
+.tube::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.02) 34%,
+    rgba(0, 0, 0, 0.22)
+  );
+  box-shadow:
+    inset 0 3px 8px rgba(0, 0, 0, 0.35),
+    inset 0 -10px 16px rgba(0, 0, 0, 0.3),
+    0 12px 20px -10px rgba(0, 0, 0, 0.8);
+}
+
+.tube::after {
+  content: '';
+  position: absolute;
+  left: 16%;
+  top: 7%;
+  width: 13%;
+  height: 60%;
+  z-index: 2;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Interior glass: measurement anchor for the canvas + sheen overlay. */
+.glass {
+  position: absolute;
+  inset: 3px;
+  z-index: 1;
+  border-radius: 0.72rem 0.72rem 1.32rem 1.32rem;
+  overflow: hidden;
+}
+
+.glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: linear-gradient(
+    105deg,
+    rgba(255, 255, 255, 0.24) 0%,
+    rgba(255, 255, 255, 0) 30%,
+    rgba(0, 0, 0, 0.18) 100%
+  );
+  pointer-events: none;
+}
+
+.tube:active {
+  filter: brightness(0.92);
+}
+
+.tube.is-selected::before {
+  border-color: rgba(255, 255, 255, 0.8);
+  box-shadow:
+    inset 0 3px 8px rgba(0, 0, 0, 0.35),
+    inset 0 -10px 16px rgba(0, 0, 0, 0.3),
+    0 0 0 3px rgba(58, 134, 255, 0.4),
+    0 18px 26px -12px rgba(0, 0, 0, 0.85);
+}
+
+.tube.is-complete::before {
+  border-color: rgba(23, 217, 158, 0.85);
+  box-shadow:
+    inset 0 3px 8px rgba(0, 0, 0, 0.35),
+    inset 0 -10px 16px rgba(0, 0, 0, 0.3),
+    0 0 18px rgba(23, 217, 158, 0.35),
+    0 12px 20px -10px rgba(0, 0, 0, 0.8);
+}
+
+/* --------------------------------------------------------- controls ---- */
+
+.controls {
+  width: 100%;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.btn {
+  flex: 1;
+  padding: 0.85rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.02));
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.2s ease;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn--primary {
+  background: linear-gradient(180deg, #5a9bff, #2f74f0);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #04122e;
+  box-shadow:
+    0 10px 20px -10px rgba(58, 134, 255, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.toggles {
+  width: 100%;
+  display: flex;
+  gap: 0.6rem;
+}
+
+.toggle {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.toggle__dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.toggle.is-on {
+  color: var(--text);
+  border-color: rgba(58, 134, 255, 0.5);
+  background: rgba(58, 134, 255, 0.14);
+}
+
+.toggle.is-on .toggle__dot {
+  background: #3a86ff;
+  box-shadow: 0 0 8px rgba(58, 134, 255, 0.9);
+}
+
+/* -------------------------------------------------------------- banner ---- */
+
+.banner {
+  width: 100%;
+  margin: 0;
+  padding: 0.8rem 1rem;
+  text-align: center;
+  border-radius: 0.9rem;
+  background: linear-gradient(180deg, rgba(23, 217, 158, 0.22), rgba(23, 217, 158, 0.1));
+  border: 1px solid rgba(23, 217, 158, 0.5);
+  color: #c9ffe9;
+  font-weight: 700;
+  box-shadow: 0 10px 24px -12px rgba(23, 217, 158, 0.8);
+  animation: banner-in 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes banner-in {
+  from {
+    transform: translateY(8px) scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------ reduced motion ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .banner {
+    animation: none;
+  }
+  .btn,
+  .toggle,
+  .toggle__dot {
+    transition: none;
+  }
+}

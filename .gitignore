@@ -1,0 +1,36 @@
+# dependencies
+node_modules
+
+# build output
+dist
+dist-ssr
+dev-dist
+
+# tooling caches
+.vite
+*.tsbuildinfo
+.eslintcache
+
+# logs and local env
+*.log
+*.local
+.env
+.env.*
+!.env.example
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# Playwright MCP screenshots / artifacts
+.playwright-mcp/
+
+# Agent / session working notes — kept local, never published
+AGENTS.md
+context.md
+NEXT.md
+.scratch/
+PLAN.md

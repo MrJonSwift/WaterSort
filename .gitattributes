@@ -1,0 +1,12 @@
+# Normalise line endings to LF in the repository; Git detects binary files.
+* text=auto eol=lf
+
+# Explicit binary types (never converted or diffed as text).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
