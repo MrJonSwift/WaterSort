@@ -139,6 +139,17 @@ export function createController(ports: ControllerPorts): Controller {
     }
   }
 
+  /**
+   * A win is the only moment progress advances. The transition can fire only
+   * once per board: a won state ignores further taps, and every new board
+   * starts unwon.
+   */
+  function recordWin(before: GameState, after: GameState): void {
+    if (!after.won || before.won) return
+    progress = { ...progress, highest: Math.max(progress.highest, level) }
+    ports.progress.save(progress)
+  }
+
   function playFeedback(before: GameState, after: GameState, event: GameEvent): void {
     if (event.type === 'pour') {
       ports.audio.play('pour')
@@ -149,10 +160,6 @@ export function createController(ports: ControllerPorts): Controller {
     }
 
     if (after.won && !before.won) {
-      // One save per win: this transition can only fire once, and a won board
-      // ignores further taps.
-      progress = { ...progress, highest: Math.max(progress.highest, level) }
-      ports.progress.save(progress)
       ports.audio.play('win')
       ports.haptic([14, 40, 14, 40, 22])
     } else if (completedCount(after) > completedCount(before)) {
@@ -160,9 +167,10 @@ export function createController(ports: ControllerPorts): Controller {
     }
   }
 
-  /** Apply a state change: sound and UI first, then the stage, then commit. */
+  /** Apply a state change: save, sound and UI first, then the stage, then commit. */
   function commit(before: GameState, next: GameState, event: GameEvent): void {
     ports.audio.unlock()
+    recordWin(before, next)
     playFeedback(before, next, event)
     ports.ui.update(next, settings, viewFor(next))
     ports.stage.dispatch(event, next)

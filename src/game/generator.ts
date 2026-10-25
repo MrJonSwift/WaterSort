@@ -18,7 +18,8 @@ import {
   topColor,
   topRun,
 } from './rules'
-import type { ColorId, GameState, Move, Tube } from './types'
+import { createGame } from './state'
+import type { ColorId, Move, Tube } from './types'
 
 export interface Level {
   /** Starting tubes, bottom-first within each tube. */
@@ -117,17 +118,9 @@ function passesQuality(
   scramble: number,
   capacity: number,
 ): boolean {
-  const tubes = board.map((colorsOfTube) => ({ colors: colorsOfTube }))
-  const state: GameState = {
-    tubes,
-    capacity,
-    selected: null,
-    moves: 0,
-    history: [],
-    won: false,
-  }
+  const state = createGame(board, capacity)
   if (isWon(state)) return false
-  if (tubes.some((tube) => isComplete(tube, capacity))) return false
+  if (state.tubes.some((tube) => isComplete(tube, capacity))) return false
   const threshold = Math.min(colors * capacity, colors + Math.ceil(scramble / 3))
   return runCount(board) >= threshold
 }
@@ -148,15 +141,7 @@ interface Attempt {
  * board or the reverse-move rules.
  */
 function trimSolution(board: ColorId[][], solution: Move[], capacity: number): Move[] {
-  let state: GameState = {
-    tubes: board.map((colors) => ({ colors: [...colors] })),
-    capacity,
-    selected: null,
-    moves: 0,
-    history: [],
-    won: false,
-  }
-
+  let state = createGame(board, capacity)
   for (let i = 0; i < solution.length; i++) {
     state = pour(state, solution[i].from, solution[i].to)
     if (isWon(state)) return solution.slice(0, i + 1)
