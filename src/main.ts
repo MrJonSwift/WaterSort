@@ -8,10 +8,12 @@
 import './style.css'
 import { createAudio } from './game/audio'
 import { createController } from './game/controller'
+import { generateLevel } from './game/generator'
 import { haptic, preventDoubleTapZoom } from './game/input'
 import { applyPaletteToCss } from './game/palette'
+import { loadProgress, saveProgress } from './game/progress'
 import { loadSettings, saveSettings } from './game/settings'
-import { createGame, generatePuzzle } from './game/state'
+import { createGame } from './game/state'
 import { createUI } from './game/ui'
 import { createStage } from './game/water/stage'
 
@@ -34,7 +36,7 @@ let controller: ReturnType<typeof createController>
 const ui = createUI(app, {
   onTap: (index) => controller.tap(index),
   onUndo: () => controller.undo(),
-  onNew: () => controller.newGame(),
+  onPrimary: () => controller.primary(),
   onToggleSound: () => controller.toggleSound(),
   onTogglePourFx: () => controller.togglePourFx(),
 })
@@ -45,8 +47,8 @@ controller = createController({
   audio,
   haptic,
   settings: { load: loadSettings, save: saveSettings },
-  // Board size is a game decision, so it defaults in `state.ts`, not here.
-  newBoard: () => createGame(generatePuzzle()),
+  progress: { load: loadProgress, save: saveProgress },
+  board: (level) => createGame(generateLevel(level).board),
 })
 
 preventDoubleTapZoom(app)
