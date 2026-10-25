@@ -6,7 +6,7 @@
 import type { ColorId } from '../types'
 import { darken, lighten, rgbCss, rgbOf, type RGB } from '../palette'
 import type { ParticleKind } from './physics'
-import type { Pose, Rect } from './geometry'
+import { unitBoundaryYs, type Pose, type Rect } from './geometry'
 
 export interface LayerView {
   color: ColorId
@@ -60,6 +60,16 @@ export interface Scene {
 
 const WHITE: RGB = [255, 255, 255]
 const BLACK: RGB = [0, 0, 0]
+
+/*
+ * Slot guides are glass markings, not liquid: faint white lines struck at each
+ * internal unit boundary so a tube one segment short reads as one empty slot at
+ * a glance. They are inset from the walls so they do not fight the glass
+ * border, and they never bob with the surface wave.
+ */
+const GUIDE_ALPHA = 0.12
+const GUIDE_INSET_PX = 2
+const GUIDE_WIDTH_PX = 1
 
 export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
   for (const tube of scene.tubes) drawTube(ctx, tube)
@@ -179,6 +189,18 @@ function drawTube(ctx: CanvasRenderingContext2D, tube: TubeView): void {
       }
     }
   })
+
+  // Slot guides last, still inside the glass clip and after the liquid, so
+  // they sit on top of the colour but can never spill past the glass. Straight
+  // and static: these boundaries are where a resting liquid edge will be.
+  ctx.beginPath()
+  for (const y of unitBoundaryYs(rect.h, capacity)) {
+    ctx.moveTo(rect.x + GUIDE_INSET_PX, rect.y + y)
+    ctx.lineTo(rect.x + rect.w - GUIDE_INSET_PX, rect.y + y)
+  }
+  ctx.strokeStyle = rgbCss(WHITE, GUIDE_ALPHA)
+  ctx.lineWidth = GUIDE_WIDTH_PX
+  ctx.stroke()
 
   ctx.restore()
 }

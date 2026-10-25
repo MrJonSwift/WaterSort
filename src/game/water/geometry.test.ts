@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hoverPose, localToCanvas, spoutLocal } from './geometry'
+import { hoverPose, localToCanvas, spoutLocal, unitBoundaryYs } from './geometry'
 
 const rect = { x: 100, y: 100, w: 50, h: 120 }
 const target = { x: 300, y: 320, w: 50, h: 120 }
@@ -30,6 +30,32 @@ describe('spoutLocal', () => {
 
   it('picks the left top corner when tilting left', () => {
     expect(spoutLocal(rect, -0.5)).toEqual({ x: rect.x, y: rect.y })
+  })
+})
+
+describe('unitBoundaryYs', () => {
+  it('splits a four-unit tube into equal slots', () => {
+    expect(unitBoundaryYs(120, 4)).toEqual([30, 60, 90])
+  })
+
+  it('follows the capacity rather than assuming four slots', () => {
+    expect(unitBoundaryYs(120, 5)).toEqual([24, 48, 72, 96])
+  })
+
+  it('starts one slot down from the top and ends one slot up from the bottom', () => {
+    const ys = unitBoundaryYs(120, 4)
+    const slot = 120 / 4
+    expect(ys[0]).toBe(slot)
+    expect(ys[ys.length - 1]).toBe(120 - slot)
+  })
+
+  it('returns nothing for a capacity below two', () => {
+    expect(unitBoundaryYs(120, 1)).toEqual([])
+    expect(unitBoundaryYs(120, 0)).toEqual([])
+  })
+
+  it('returns nothing for a height it cannot divide', () => {
+    expect(unitBoundaryYs(Number.NaN, 4)).toEqual([])
   })
 })
 

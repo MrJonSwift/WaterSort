@@ -44,6 +44,22 @@ export function spoutLocal(rect: Rect, rot: number): { x: number; y: number } {
 }
 
 /**
+ * Y offsets from the top of the glass, one per internal slot boundary.
+ *
+ * These are the same boundaries the renderer fills liquid to: liquid is laid
+ * out from the bottom (`bottom - units * unit`), so a guide struck at
+ * `top + height * i / capacity` meets a resting liquid edge exactly. Kept
+ * capacity-agnostic because the slot count will change; a capacity below two
+ * has no internal boundary, and a height that is not finite cannot be split.
+ */
+export function unitBoundaryYs(height: number, capacity: number): number[] {
+  if (!Number.isFinite(height) || height < 0 || capacity < 2) return []
+  const boundaries: number[] = []
+  for (let i = 1; i < capacity; i++) boundaries.push((height * i) / capacity)
+  return boundaries
+}
+
+/**
  * Pose that hovers `rect` above `target` so its spout pours into `target`:
  * the tube is lifted until the spout is `gap` px above the target's top edge,
  * and tilted by `tiltDeg` toward the board centre so the body stays on screen.
