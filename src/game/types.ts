@@ -26,7 +26,7 @@ export interface GameState {
 
 /**
  * A user or game action, used to drive presentation (animation, sound).
- * `main.ts` builds these; the water stage and UI consume them.
+ * The controller builds these from a tap; the water stage and UI consume them.
  */
 export type GameEvent =
   | { type: 'pour'; from: number; to: number; amount: number; color: ColorId }
