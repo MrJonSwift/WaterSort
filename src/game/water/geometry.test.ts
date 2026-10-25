@@ -55,7 +55,15 @@ describe('unitBoundaryYs', () => {
   })
 
   it('returns nothing for a height it cannot divide', () => {
+    // Height 0 is a tube the stage has not measured yet, not an empty one:
+    // three zero-length guide lines would just be stroke spam.
     expect(unitBoundaryYs(Number.NaN, 4)).toEqual([])
+    expect(unitBoundaryYs(0, 4)).toEqual([])
+    expect(unitBoundaryYs(-120, 4)).toEqual([])
+  })
+
+  it('returns nothing for a capacity it cannot count', () => {
+    expect(unitBoundaryYs(120, Number.POSITIVE_INFINITY)).toEqual([])
   })
 })
 

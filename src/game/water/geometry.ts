@@ -1,6 +1,7 @@
 /**
  * Pure geometry helpers for the water stage: where a tilted tube's spout is,
- * and how a tube's pose maps local points into canvas space.
+ * how a tube's pose maps local points into canvas space, and where the slot
+ * boundaries sit inside the glass.
  *
  * Kept free of DOM access so the choreography math is testable and reusable.
  */
@@ -50,10 +51,12 @@ export function spoutLocal(rect: Rect, rot: number): { x: number; y: number } {
  * out from the bottom (`bottom - units * unit`), so a guide struck at
  * `top + height * i / capacity` meets a resting liquid edge exactly. Kept
  * capacity-agnostic because the slot count will change; a capacity below two
- * has no internal boundary, and a height that is not finite cannot be split.
+ * has no internal boundary, and a height that is not positive and finite
+ * cannot be split (a zero height is an unmeasured tube, not an empty one).
  */
 export function unitBoundaryYs(height: number, capacity: number): number[] {
-  if (!Number.isFinite(height) || height < 0 || capacity < 2) return []
+  if (!Number.isFinite(height) || height <= 0) return []
+  if (!Number.isFinite(capacity) || capacity < 2) return []
   const boundaries: number[] = []
   for (let i = 1; i < capacity; i++) boundaries.push((height * i) / capacity)
   return boundaries
