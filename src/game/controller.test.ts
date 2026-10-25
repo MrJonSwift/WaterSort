@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { createController, describeTap, type ControllerPorts, type ControllerStage } from './controller'
+import {
+  createController,
+  describeTap,
+  primaryAction,
+  type ControllerPorts,
+  type ControllerStage,
+  type UIView,
+} from './controller'
+import { MAX_LEVEL } from './levels'
+import { DEFAULT_PROGRESS, type Progress } from './progress'
 import { pour } from './rules'
 import { DEFAULT_SETTINGS, type Settings } from './settings'
 import { createGame } from './state'
@@ -17,7 +26,9 @@ interface Harness {
   sounds: SoundName[]
   haptics: Array<number | number[]>
   saved: Settings[]
-  updates: Array<{ state: GameState; settings: Settings }>
+  savedProgress: Progress[]
+  boards: number[]
+  updates: Array<{ state: GameState; settings: Settings; view: UIView }>
   unlocks: () => number
 }
 
@@ -28,14 +39,20 @@ interface Harness {
  * is the tripwire: the moment a controller asks the stage whether it is busy,
  * every test fails with a clear message rather than the gate quietly returning.
  */
-function harness(board: number[][], settings: Partial<Settings> = {}): Harness {
+function harness(
+  board: number[][],
+  settings: Partial<Settings> = {},
+  progress: Partial<Progress> = {},
+): Harness {
   const events: GameEvent[] = []
   const dispatched: GameState[] = []
   const prefs: StagePrefs[] = []
   const sounds: SoundName[] = []
   const haptics: Array<number | number[]> = []
   const saved: Settings[] = []
-  const updates: Array<{ state: GameState; settings: Settings }> = []
+  const savedProgress: Progress[] = []
+  const boards: number[] = []
+  const updates: Array<{ state: GameState; settings: Settings; view: UIView }> = []
   let unlocks = 0
 
   const stage = new Proxy(
@@ -60,8 +77,8 @@ function harness(board: number[][], settings: Partial<Settings> = {}): Harness {
 
   const ports: ControllerPorts = {
     ui: {
-      update(state, next) {
-        updates.push({ state, settings: next })
+      update(state, next, view) {
+        updates.push({ state, settings: next, view })
       },
     },
     stage,
@@ -83,7 +100,16 @@ function harness(board: number[][], settings: Partial<Settings> = {}): Harness {
         saved.push(next)
       },
     },
-    newBoard: () => createGame(board.map((colors) => [...colors])),
+    progress: {
+      load: () => ({ ...DEFAULT_PROGRESS, ...progress }),
+      save(next) {
+        savedProgress.push(next)
+      },
+    },
+    board(level) {
+      boards.push(level)
+      return createGame(board.map((colors) => [...colors]))
+    },
   }
 
   return {
@@ -94,6 +120,8 @@ function harness(board: number[][], settings: Partial<Settings> = {}): Harness {
     sounds,
     haptics,
     saved,
+    savedProgress,
+    boards,
     updates,
     unlocks: () => unlocks,
   }
@@ -234,7 +262,7 @@ describe('taps', () => {
   })
 })
 
-describe('undo and new game', () => {
+describe('undo and restart', () => {
   it('restores the previous board and tells the stage', () => {
     const h = harness([[1, 1], []])
     h.controller.start()
@@ -258,12 +286,20 @@ describe('undo and new game', () => {
     expect(h.controller.state.moves).toBe(0)
   })
 
-  it('new game replaces the board and dispatches a fresh start', () => {
-    const h = harness([[1, 1], []])
+  it('restart rebuilds the same level and resets moves', () => {
+    const h = harness([[1, 1], []], {}, { level: 2, highest: 2 })
     h.controller.start()
+    const initial = JSON.stringify(h.controller.state.tubes)
     h.controller.tap(0)
-    h.controller.newGame()
+    h.controller.tap(1)
+    expect(h.controller.state.moves).toBe(1)
+
+    h.controller.restart()
+    expect(h.controller.level).toBe(2)
+    expect(h.boards).toEqual([2, 2])
     expect(h.controller.state.moves).toBe(0)
+    expect(h.controller.state.selected).toBeNull()
+    expect(JSON.stringify(h.controller.state.tubes)).toBe(initial)
     expect(h.events[h.events.length - 1]).toEqual({ type: 'new' })
   })
 })
@@ -333,5 +369,118 @@ describe('start', () => {
     expect(h.prefs).toEqual([{ pourFx: true }])
     expect(h.events).toEqual([{ type: 'new' }])
     expect(h.sounds).toEqual([])
+  })
+})
+
+/* ------------------------------------------------- levels and progress ---- */
+
+/** `[1, 1, 1]` plus `[1]` is a one-pour win. */
+function winInOnePour(h: Harness): void {
+  h.controller.start()
+  h.controller.tap(1)
+  h.controller.tap(0)
+  expect(h.controller.state.won).toBe(true)
+}
+
+describe('levels and progress', () => {
+  it('loads the saved level and builds its board', () => {
+    const h = harness([[1, 1], []], {}, { level: 3, highest: 3 })
+    expect(h.controller.level).toBe(3)
+    expect(h.controller.progress).toEqual({ level: 3, highest: 3 })
+    expect(h.boards).toEqual([3])
+
+    h.controller.start()
+    expect(h.updates[0].view).toEqual({
+      level: 3,
+      maxLevel: MAX_LEVEL,
+      primary: 'restart',
+    })
+  })
+
+  it('saves the highest level on a win without lowering it', () => {
+    const h = harness([[1, 1, 1], [1]], {}, { level: 1, highest: 4 })
+    winInOnePour(h)
+    expect(h.savedProgress).toEqual([{ level: 1, highest: 4 }])
+  })
+
+  it('offers next level after a win', () => {
+    const h = harness([[1, 1, 1], [1]], {}, { level: 1, highest: 1 })
+    winInOnePour(h)
+    expect(h.updates[h.updates.length - 1].view.primary).toBe('next')
+  })
+
+  it('advances, saves and dispatches a fresh start on next level', () => {
+    const h = harness([[1, 1, 1], [1]], {}, { level: 1, highest: 1 })
+    winInOnePour(h)
+
+    h.controller.nextLevel()
+    expect(h.controller.level).toBe(2)
+    expect(h.controller.progress).toEqual({ level: 2, highest: 1 })
+    expect(h.savedProgress[h.savedProgress.length - 1]).toEqual({ level: 2, highest: 1 })
+    expect(h.boards).toEqual([1, 2])
+    expect(h.events[h.events.length - 1]).toEqual({ type: 'new' })
+    expect(h.controller.state.won).toBe(false)
+  })
+
+  it('returns to level 1 without losing the highest on play again', () => {
+    const h = harness([[1, 1, 1], [1]], {}, { level: MAX_LEVEL, highest: MAX_LEVEL })
+    winInOnePour(h)
+
+    h.controller.playAgain()
+    expect(h.controller.level).toBe(1)
+    expect(h.controller.progress).toEqual({ level: 1, highest: MAX_LEVEL })
+    expect(h.savedProgress[h.savedProgress.length - 1]).toEqual({
+      level: 1,
+      highest: MAX_LEVEL,
+    })
+    expect(h.boards).toEqual([MAX_LEVEL, 1])
+    expect(h.events[h.events.length - 1]).toEqual({ type: 'new' })
+    expect(h.controller.state.won).toBe(false)
+  })
+})
+
+describe('primaryAction', () => {
+  const playing = createGame([[1, 1], []])
+  const won = { ...playing, won: true }
+
+  it('restarts while the level is in play', () => {
+    expect(primaryAction(playing, 1)).toBe('restart')
+    expect(primaryAction(playing, MAX_LEVEL)).toBe('restart')
+  })
+
+  it('advances after a win', () => {
+    expect(primaryAction(won, 1)).toBe('next')
+  })
+
+  it('plays again on the last level', () => {
+    expect(primaryAction(won, MAX_LEVEL)).toBe('play-again')
+  })
+})
+
+describe('primary', () => {
+  it('restarts the current level while playing', () => {
+    const h = harness([[1, 1], []], {}, { level: 1, highest: 1 })
+    h.controller.start()
+    h.controller.tap(0)
+
+    h.controller.primary()
+    expect(h.boards).toEqual([1, 1])
+    expect(h.controller.state.selected).toBeNull()
+    expect(h.controller.state.moves).toBe(0)
+  })
+
+  it('advances after a win', () => {
+    const h = harness([[1, 1, 1], [1]], {}, { level: 1, highest: 1 })
+    winInOnePour(h)
+    h.controller.primary()
+    expect(h.controller.level).toBe(2)
+  })
+
+  it('plays again after the last level', () => {
+    const h = harness([[1, 1, 1], [1]], {}, { level: MAX_LEVEL, highest: MAX_LEVEL })
+    winInOnePour(h)
+    h.controller.primary()
+    expect(h.controller.level).toBe(1)
+    expect(h.controller.progress.highest).toBe(MAX_LEVEL)
   })
 })

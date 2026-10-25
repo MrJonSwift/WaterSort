@@ -15,46 +15,6 @@ export function createGame(
   }
 }
 
-function shuffle<T>(items: T[]): T[] {
-  const out = [...items]
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[out[i], out[j]] = [out[j], out[i]]
-  }
-  return out
-}
-
-/** Colours in a board. One colour fills one tube, so this is also the tube count. */
-export const DEFAULT_COLOR_COUNT = 5
-/** Spare tubes every board gets. Two is what makes a random deal usually solvable. */
-export const DEFAULT_EMPTY_TUBES = 2
-
-/**
- * Random puzzle: `colorCount` colors spread across that many tubes, plus
- * `emptyTubes` spare tubes.
- *
- * TODO: a random deal is not guaranteed to be solvable. Replace this with a
- * reverse-solve generator before shipping difficulty levels.
- */
-export function generatePuzzle(
-  colorCount = DEFAULT_COLOR_COUNT,
-  emptyTubes = DEFAULT_EMPTY_TUBES,
-  capacity = DEFAULT_CAPACITY,
-): ColorId[][] {
-  const pool: ColorId[] = []
-  for (let color = 0; color < colorCount; color++) {
-    for (let i = 0; i < capacity; i++) pool.push(color)
-  }
-
-  const shuffled = shuffle(pool)
-  const board: ColorId[][] = []
-  for (let i = 0; i < colorCount; i++) {
-    board.push(shuffled.slice(i * capacity, (i + 1) * capacity))
-  }
-  for (let i = 0; i < emptyTubes; i++) board.push([])
-  return board
-}
-
 /** Handle a tap on a tube: select it, deselect it, or pour. */
 export function tap(state: GameState, index: number): GameState {
   if (state.won) return state
