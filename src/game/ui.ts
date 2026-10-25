@@ -37,6 +37,13 @@ function movesCopy(count: number): string {
   return `${count} ${count === 1 ? 'move' : 'moves'}`
 }
 
+/** Banner text for a finished board: the last level reads as the end of the run. */
+export function bannerCopy(level: number, maxLevel: number, moves: number): string {
+  return level >= maxLevel
+    ? `All ${maxLevel} levels complete!`
+    : `Level ${level} solved in ${movesCopy(moves)}`
+}
+
 /**
  * How many grid columns the board uses for `count` tubes.
  *
@@ -183,10 +190,7 @@ export function createUI(root: HTMLElement, handlers: UIHandlers): UI {
 
       banner.hidden = !state.won
       if (state.won) {
-        banner.textContent =
-          view.level >= view.maxLevel
-            ? 'All levels complete!'
-            : `Level ${view.level} solved in ${movesCopy(state.moves)}`
+        banner.textContent = bannerCopy(view.level, view.maxLevel, state.moves)
       }
     },
   }

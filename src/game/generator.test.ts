@@ -74,11 +74,14 @@ describe('generateBoard', () => {
   })
 
   it('produces legal, solvable boards that respect the quality gate', () => {
+    // A representative spread of tiers rather than every row: the numbered
+    // levels are covered by `generateLevel` below, and this proves the gate
+    // holds at arbitrary seeds too.
     const configs: LevelConfig[] = [
-      ...LEVELS,
       { colors: 2, emptyTubes: 2, scramble: 4 },
-      { colors: 3, emptyTubes: 2, scramble: 12 },
-      { colors: 4, emptyTubes: 2, scramble: 10 },
+      { colors: 3, emptyTubes: 2, scramble: 6 },
+      { colors: 5, emptyTubes: 2, scramble: 16 },
+      { colors: 8, emptyTubes: 2, scramble: 36 },
     ]
 
     for (const config of configs) {
@@ -115,22 +118,61 @@ describe('generateLevel', () => {
     }
   })
 
-  it('gives every level a legal, solvable board', () => {
+  it('gives every level a legal, solvable board that clears the quality gate', () => {
     for (let level = 1; level <= MAX_LEVEL; level++) {
-      expectHardRequirements(generateLevel(level), levelConfig(level))
+      const config = levelConfig(level)
+      const board = generateLevel(level)
+      expectHardRequirements(board, config)
+
+      // Measured against the configured scramble, never the generator's easier
+      // retry: a level that only ships because the scramble was quietly eased
+      // fails here instead of reaching the family.
+      const threshold = Math.min(
+        config.colors * CAP,
+        config.colors + Math.ceil(config.scramble / 3),
+      )
+      expect(runCount(board.board)).toBeGreaterThanOrEqual(threshold)
+    }
+  })
+
+  it('keeps the four boards the family has already played', () => {
+    // Board identity, not just a move count: a change to `seedFor` or to the
+    // reverse-move rules would silently re-roll the levels people have beaten.
+    // These are snapshots of shipped boards — changing one is a product
+    // decision, so say so in the ticket rather than editing the string.
+    const shipped: Array<[number, string]> = [
+      [1, '[[],[0,0],[2,2,2],[1,1,1],[2,1,0,0]]'],
+      [2, '[[0,0,0,1],[],[2,1],[2,2,2,0],[1,1]]'],
+      [3, '[[0,1,0,2],[1,2],[2,0],[1,1,2],[0]]'],
+      [4, '[[0,0,0,2],[3,3],[2,2,2,0],[1,1,1],[1,3,3],[]]'],
+    ]
+    for (const [level, board] of shipped) {
+      expect(JSON.stringify(generateLevel(level).board)).toBe(board)
     }
   })
 
   it('records only the moves needed to win', () => {
     // Pours actually needed, replayed through tap(); trailing relocations are
-    // dropped so a solution can never contain a move after the win.
-    const needed = [4, 8, 9, 7]
-    needed.forEach((count, index) => {
-      expect(generateLevel(index + 1).solution).toHaveLength(count)
-    })
+    // dropped so a solution can never contain a move after the win. The replay
+    // in `expectHardRequirements` fails if a move lands after the win, because
+    // a won game ignores taps.
+    for (let level = 1; level <= MAX_LEVEL; level++) {
+      const { solution } = generateLevel(level)
+      expect(solution.length).toBeGreaterThan(0)
+      expect(solution.length).toBeLessThanOrEqual(levelConfig(level).scramble)
+    }
   })
 
-  it('gives the four levels different boards', () => {
+  it('makes the late levels longer to solve than the warm-up', () => {
+    const average = (from: number, to: number): number => {
+      let total = 0
+      for (let level = from; level <= to; level++) total += generateLevel(level).solution.length
+      return total / (to - from + 1)
+    }
+    expect(average(20, 30)).toBeGreaterThan(average(1, 3))
+  })
+
+  it('gives every level a different board', () => {
     const boards = new Set(
       Array.from({ length: MAX_LEVEL }, (_, i) => JSON.stringify(generateLevel(i + 1).board)),
     )

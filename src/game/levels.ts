@@ -14,12 +14,45 @@ export interface LevelConfig {
   scramble: number
 }
 
-/** Rows 1–4 of the final curve; ticket 04 appends the rest. */
+/**
+ * The 30-level curve: 3 colours at level 1 up to 8 colours and 36 reverse
+ * moves at level 30. Every level keeps two spare tubes; the ramp comes from
+ * colours and scramble, never from taking a spare away.
+ *
+ * Each new colour tier starts below the previous tier's last scramble, so the
+ * extra colour is the step rather than the colour plus a scramble jump.
+ */
 export const LEVELS: readonly LevelConfig[] = [
   { colors: 3, emptyTubes: 2, scramble: 6 },
   { colors: 3, emptyTubes: 2, scramble: 8 },
   { colors: 3, emptyTubes: 2, scramble: 10 },
   { colors: 4, emptyTubes: 2, scramble: 8 },
+  { colors: 4, emptyTubes: 2, scramble: 10 },
+  { colors: 4, emptyTubes: 2, scramble: 12 },
+  { colors: 5, emptyTubes: 2, scramble: 10 },
+  { colors: 5, emptyTubes: 2, scramble: 12 },
+  { colors: 5, emptyTubes: 2, scramble: 14 },
+  { colors: 5, emptyTubes: 2, scramble: 16 },
+  { colors: 6, emptyTubes: 2, scramble: 12 },
+  { colors: 6, emptyTubes: 2, scramble: 14 },
+  { colors: 6, emptyTubes: 2, scramble: 16 },
+  { colors: 6, emptyTubes: 2, scramble: 18 },
+  { colors: 7, emptyTubes: 2, scramble: 14 },
+  { colors: 7, emptyTubes: 2, scramble: 16 },
+  { colors: 7, emptyTubes: 2, scramble: 18 },
+  { colors: 7, emptyTubes: 2, scramble: 20 },
+  { colors: 7, emptyTubes: 2, scramble: 22 },
+  { colors: 8, emptyTubes: 2, scramble: 16 },
+  { colors: 8, emptyTubes: 2, scramble: 18 },
+  { colors: 8, emptyTubes: 2, scramble: 20 },
+  { colors: 8, emptyTubes: 2, scramble: 22 },
+  { colors: 8, emptyTubes: 2, scramble: 24 },
+  { colors: 8, emptyTubes: 2, scramble: 26 },
+  { colors: 8, emptyTubes: 2, scramble: 28 },
+  { colors: 8, emptyTubes: 2, scramble: 30 },
+  { colors: 8, emptyTubes: 2, scramble: 32 },
+  { colors: 8, emptyTubes: 2, scramble: 34 },
+  { colors: 8, emptyTubes: 2, scramble: 36 },
 ]
 
 export const MAX_LEVEL = LEVELS.length
