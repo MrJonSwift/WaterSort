@@ -11,8 +11,13 @@
  *     return;
  *   - a render loop that sleeps once the simulation settles.
  *
- * It adapts between the pure layers: `physics` (simulation state) and
- * `renderer` (painting a `Scene`).
+ * The stage is presentation only. It never reports whether it is busy, and
+ * nothing outside it waits for an animation: a new event arriving mid-pour
+ * preempts the old one. The game state is already correct by the time an
+ * event gets here, so the stage is always catching up, never deciding.
+ *
+ * It adapts between the pure layers: `physics` (simulation state),
+ * `tuning` (timings) and `renderer` (painting a `Scene`).
  */
 import { prefersReducedMotion } from '../input'
 import { isComplete } from '../rules'
@@ -22,7 +27,6 @@ import {
   createSim,
   fillUnits,
   isSettled,
-  slosh,
   snapAll,
   spawnConfetti,
   spawnDroplets,
@@ -32,21 +36,27 @@ import {
   waveImpulse,
   type Sim,
 } from './physics'
+import { poseReached, stepPose, zeroVelocity, type PoseVelocity } from './pose'
 import { drawScene, type LayerView, type Scene, type StreamView, type TubeView } from './renderer'
-
-/* ----------------------------------------------------------- timings ---- */
-
-const LIFT_MS = 220
-const RETURN_MS = 200
-const TILT_DEG = 30
-const SPOUT_GAP = 26
-const DROPLET_INTERVAL_MS = 55
-const SHAKE_MS = 420
-const POP_MS = 620
-const SPRING_K = 170
-const SPRING_DAMPING = 17
-
-const pourMs = (amount: number): number => 240 + amount * 40
+import {
+  ENTRANCE_DROP_PX,
+  ENTRANCE_DROP_STEP_PX,
+  ENTRANCE_SCALE,
+  ENTRANCE_STAGGER_MS,
+  IMPACT_DROPLETS,
+  IMPACT_IMPULSE,
+  IMPACT_X_FRAC,
+  LIFT_MS,
+  POP_MS,
+  pourTotalMs,
+  SHAKE_AMP,
+  SHAKE_MS,
+  SPOUT_GAP,
+  streamMs,
+  TILT_DEG,
+  TRICKLE_DROPLETS,
+  TRICKLE_MS,
+} from './tuning'
 
 /* --------------------------------------------------------------- API ---- */
 
@@ -55,11 +65,15 @@ export interface StagePrefs {
 }
 
 export interface Stage {
-  /** Drive presentation from a game event and the resulting state. */
+  /**
+   * Drive presentation from a game event and the resulting state.
+   *
+   * Deliberately the only entry point, and deliberately silent about whether
+   * a previous animation is still running: it preempts instead. Nothing may
+   * ask the stage whether it is busy, because nothing may gate input on it.
+   */
   dispatch(event: GameEvent, state: GameState): void
   setPrefs(prefs: StagePrefs): void
-  /** True while the pour choreography is playing (input should be ignored). */
-  isAnimating(): boolean
 }
 
 /* ----------------------------------------------------------- internals ---- */
@@ -70,7 +84,7 @@ interface TubeNode {
   rect: Rect
   radii: [number, number, number, number]
   pose: Pose
-  vel: { dx: number; dy: number; rot: number; scale: number }
+  vel: PoseVelocity
   target: Pose
   wakeAt: number
   shakeUntil: number
@@ -81,15 +95,17 @@ interface TubeNode {
 interface PourAnim {
   from: number
   to: number
-  amount: number
   color: ColorId
   capacity: number
+  /** The game state's levels for both tubes, applied when the stream starts. */
   fromUnits: ColorId[]
   toUnits: ColorId[]
   hover: Pose
-  start: number
+  /** When the source has finished lifting and the stream begins. */
   liftEnd: number
+  /** When the stream stops. */
   pourEnd: number
+  /** When the choreography is over and the slot can be cleared. */
   end: number
   streaming: boolean
   lastDropAt: number
@@ -144,7 +160,7 @@ export function createStage(host: HTMLElement): Stage {
         rect: { x: 0, y: 0, w: 0, h: 0 },
         radii: [0, 0, 0, 0],
         pose: { ...REST_POSE },
-        vel: { dx: 0, dy: 0, rot: 0, scale: 0 },
+        vel: zeroVelocity(),
         target: { ...REST_POSE },
         wakeAt: 0,
         shakeUntil: 0,
@@ -191,16 +207,7 @@ export function createStage(host: HTMLElement): Stage {
     if (pour || pending.length > 0) return true
     if (!isSettled(sim)) return true
     for (const node of nodes) {
-      const t = node.target
-      const c = node.pose
-      if (
-        Math.abs(c.dx - t.dx) > 0.05 ||
-        Math.abs(c.dy - t.dy) > 0.05 ||
-        Math.abs(c.rot - t.rot) > 0.002 ||
-        Math.abs(c.scale - t.scale) > 0.002
-      ) {
-        return true
-      }
+      if (!poseReached(node.pose, node.target)) return true
     }
     return false
   }
@@ -275,26 +282,60 @@ export function createStage(host: HTMLElement): Stage {
       if (toNode && state) {
         syncTube(sim, anim.from, anim.capacity, anim.fromUnits)
         syncTube(sim, anim.to, anim.capacity, anim.toUnits)
-        const xFrac = 0.5 // impact lands mid-tube
-        waveImpulse(sim, anim.to, xFrac, 520)
-        slosh(sim, anim.from, 240)
+        waveImpulse(sim, anim.to, IMPACT_X_FRAC, IMPACT_IMPULSE)
       }
     }
 
     if (anim.streaming && now >= anim.pourEnd) {
       anim.streaming = false
       const impact = impactPoint(anim)
-      if (impact) spawnDroplets(sim, impact.x, impact.y, anim.color, 6, { speed: 160 })
-      nodes[anim.from].target = { ...REST_POSE }
+      if (impact) spawnDroplets(sim, impact.x, impact.y, anim.color, IMPACT_DROPLETS, { speed: 160 })
+      const fromNode = nodes[anim.from]
+      if (fromNode) fromNode.target = { ...REST_POSE }
     }
 
-    if (anim.streaming && now - anim.lastDropAt >= DROPLET_INTERVAL_MS) {
+    if (anim.streaming && now - anim.lastDropAt >= TRICKLE_MS) {
       anim.lastDropAt = now
       const impact = impactPoint(anim)
-      if (impact) spawnDroplets(sim, impact.x, impact.y, anim.color, 2, { spread: 14, speed: 130, size: 2.6 })
+      if (impact) {
+        spawnDroplets(sim, impact.x, impact.y, anim.color, TRICKLE_DROPLETS, {
+          spread: 14,
+          speed: 130,
+          size: 2.6,
+        })
+      }
     }
 
     if (now >= anim.end) pour = null
+  }
+
+  /**
+   * Land an in-flight pour immediately, so a newer event can take over.
+   *
+   * `landed` is the state the old pour produced — the one in force before the
+   * new event — so the tubes snap to where that pour actually left them, never
+   * to where the new event is going. The stream disappears and the source
+   * returns to rest. In-flight particles are left alone; they die on their own.
+   *
+   * Clearing `pour` first is what keeps a stale `pourEnd` from firing into the
+   * animation that replaces it: every timeline step checks the slot.
+   */
+  function finishPour(landed: GameState | null): void {
+    const anim = pour
+    if (!anim) return
+    pour = null
+    // Defensive only: a pour can only exist once a board has been dispatched,
+    // so `landed` is set in practice. Clearing the slot above is the part that
+    // matters, and it has already happened.
+    if (!landed) return
+
+    const from = landed.tubes[anim.from]
+    const to = landed.tubes[anim.to]
+    if (from) syncTube(sim, anim.from, landed.capacity, from.colors, true)
+    if (to) syncTube(sim, anim.to, landed.capacity, to.colors, true)
+
+    const fromNode = nodes[anim.from]
+    if (fromNode) fromNode.target = { ...REST_POSE }
   }
 
   function impactPoint(anim: PourAnim): { x: number; y: number } | null {
@@ -334,14 +375,7 @@ export function createStage(host: HTMLElement): Stage {
       applyPoseTarget(node, index, now)
       if (now < node.wakeAt) return
 
-      const springs: Array<keyof Pose> = ['dx', 'dy', 'rot', 'scale']
-      for (const key of springs) {
-        const target = node.target[key]
-        const velocity = node.vel[key]
-        const accel = (target - node.pose[key]) * SPRING_K - velocity * SPRING_DAMPING
-        node.vel[key] = velocity + accel * dt
-        node.pose[key] = node.pose[key] + node.vel[key] * dt
-      }
+      stepPose(node.pose, node.vel, node.target, dt)
 
       const { pose } = node
       node.tube.style.transform = `translate(${pose.dx}px, ${pose.dy}px) rotate(${pose.rot}rad) scale(${pose.scale})`
@@ -380,6 +414,11 @@ export function createStage(host: HTMLElement): Stage {
 
   function dispatch(event: GameEvent, next: GameState): void {
     const previous = state
+
+    // A new event always wins. The previous state is the one the in-flight
+    // pour produced, so preempting lands that pour where it really ended and
+    // can never leave the old animation's levels showing.
+    finishPour(previous)
     state = next
 
     if (nodes.length !== next.tubes.length) measure()
@@ -400,21 +439,18 @@ export function createStage(host: HTMLElement): Stage {
           pour = {
             from: event.from,
             to: event.to,
-            amount: event.amount,
             color: event.color,
             capacity: next.capacity,
             fromUnits: next.tubes[event.from].colors,
             toUnits: next.tubes[event.to].colors,
             hover,
-            start,
             liftEnd: start + LIFT_MS,
-            pourEnd: start + LIFT_MS + pourMs(event.amount),
-            end: start + LIFT_MS + pourMs(event.amount) + RETURN_MS,
+            pourEnd: start + LIFT_MS + streamMs(event.amount),
+            end: start + pourTotalMs(event.amount),
             streaming: false,
             lastDropAt: 0,
           }
           fromNode.target = hover
-          if (animate) slosh(sim, event.from, 120)
         } else {
           syncTube(sim, event.from, next.capacity, next.tubes[event.from].colors, true)
           syncTube(sim, event.to, next.capacity, next.tubes[event.to].colors, true)
@@ -422,29 +458,36 @@ export function createStage(host: HTMLElement): Stage {
         break
       }
 
+      // Selecting is a pose change only: no wave, so a picked-up tube does not
+      // wobble when nothing has been poured.
       case 'select':
-        if (animate) slosh(sim, event.index, 90)
         break
 
       case 'invalid': {
         const node = nodes[event.index]
         if (node && animate) {
           node.shakeUntil = performance.now() + SHAKE_MS
-          node.shakeAmp = 7
+          node.shakeAmp = SHAKE_AMP
         }
         break
       }
 
+      // Undo and a new board replace everything outright: snap, then let the
+      // tubes drop in. `finishPour` has already dealt with any in-flight pour.
       case 'undo':
       case 'new': {
         snapAll(sim)
         next.tubes.forEach((tube, i) => syncTube(sim, i, next.capacity, tube.colors, true))
-        pour = null
         if (event.type === 'new' && animate) {
           nodes.forEach((node, i) => {
-            node.pose = { dx: 0, dy: 22 + i * 4, rot: 0, scale: 0.88 }
-            node.vel = { dx: 0, dy: 0, rot: 0, scale: 0 }
-            node.wakeAt = performance.now() + i * 35
+            node.pose = {
+              dx: 0,
+              dy: ENTRANCE_DROP_PX + i * ENTRANCE_DROP_STEP_PX,
+              rot: 0,
+              scale: ENTRANCE_SCALE,
+            }
+            node.vel = zeroVelocity()
+            node.wakeAt = performance.now() + i * ENTRANCE_STAGGER_MS
           })
         }
         break
@@ -503,6 +546,5 @@ export function createStage(host: HTMLElement): Stage {
     setPrefs(next) {
       prefs = next
     },
-    isAnimating: () => pour !== null,
   }
 }

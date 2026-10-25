@@ -24,6 +24,11 @@ function shuffle<T>(items: T[]): T[] {
   return out
 }
 
+/** Colours in a board. One colour fills one tube, so this is also the tube count. */
+export const DEFAULT_COLOR_COUNT = 5
+/** Spare tubes every board gets. Two is what makes a random deal usually solvable. */
+export const DEFAULT_EMPTY_TUBES = 2
+
 /**
  * Random puzzle: `colorCount` colors spread across that many tubes, plus
  * `emptyTubes` spare tubes.
@@ -32,8 +37,8 @@ function shuffle<T>(items: T[]): T[] {
  * reverse-solve generator before shipping difficulty levels.
  */
 export function generatePuzzle(
-  colorCount: number,
-  emptyTubes = 2,
+  colorCount = DEFAULT_COLOR_COUNT,
+  emptyTubes = DEFAULT_EMPTY_TUBES,
   capacity = DEFAULT_CAPACITY,
 ): ColorId[][] {
   const pool: ColorId[] = []

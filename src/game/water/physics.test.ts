@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  MAX_WAVE,
   createSim,
   fillUnits,
   isSettled,
   snapAll,
-  slosh,
   spawnConfetti,
   spawnDroplets,
   spawnSparks,
@@ -12,6 +12,7 @@ import {
   syncTube,
   waveImpulse,
 } from './physics'
+import { IMPACT_IMPULSE } from './tuning'
 
 function makeSim(): ReturnType<typeof createSim> {
   const sim = createSim()
@@ -87,7 +88,7 @@ describe('waves', () => {
       for (const h of sim.tubes[0].heights) peak = Math.max(peak, Math.abs(h))
     }
     expect(peak).toBeGreaterThan(0.1)
-    expect(peak).toBeLessThanOrEqual(16)
+    expect(peak).toBeLessThanOrEqual(MAX_WAVE)
     for (let i = 0; i < 1200; i++) step(sim, 1 / 60)
     for (const h of sim.tubes[0].heights) expect(Math.abs(h)).toBeLessThan(0.05)
     expect(isSettled(sim)).toBe(true)
@@ -96,12 +97,55 @@ describe('waves', () => {
   it('waves reflect without blowing up or going non-finite', () => {
     const sim = makeSim()
     waveImpulse(sim, 0, 0, 6000)
-    slosh(sim, 0, 2000)
+    waveImpulse(sim, 0, 1, -6000)
     for (let i = 0; i < 300; i++) step(sim, 1 / 60)
     for (const h of sim.tubes[0].heights) {
       expect(Number.isFinite(h)).toBe(true)
-      expect(Math.abs(h)).toBeLessThanOrEqual(16)
+      expect(Math.abs(h)).toBeLessThanOrEqual(MAX_WAVE)
     }
+  })
+
+  /*
+   * The post-pour budget. A 4-unit transfer is what the stage does at the
+   * moment the stream starts: the source drains, the destination fills, and
+   * the stream lands with the same impulse the stage uses. The player must be
+   * able to move on straight away, so the surface has to be flat and the
+   * simulation asleep within the budget, not merely quiet.
+   */
+  it('a 4-unit pour is invisible within 1s and settled within 1.2s', () => {
+    const sim = createSim()
+    syncTube(sim, 0, 4, [1, 1, 1, 1], true)
+    syncTube(sim, 1, 4, [], true)
+    syncTube(sim, 0, 4, [])
+    syncTube(sim, 1, 4, [1, 1, 1, 1])
+    waveImpulse(sim, 1, 0.5, IMPACT_IMPULSE)
+
+    let atOneSecond = 0
+    let settledAt = Number.POSITIVE_INFINITY
+    for (let frame = 1; frame <= 120; frame++) {
+      step(sim, 1 / 60)
+      if (frame === 60) {
+        for (const h of sim.tubes[1].heights) atOneSecond = Math.max(atOneSecond, Math.abs(h))
+      }
+      if (settledAt === Number.POSITIVE_INFINITY && isSettled(sim)) settledAt = frame / 60
+    }
+
+    expect(atOneSecond).toBeLessThan(0.4)
+    expect(settledAt).toBeLessThanOrEqual(1.2)
+    expect(isSettled(sim)).toBe(true)
+  })
+
+  it('the impulse still makes a visible splash', () => {
+    const sim = makeSim()
+    waveImpulse(sim, 0, 0.5, IMPACT_IMPULSE)
+    let peak = 0
+    for (let i = 0; i < 60; i++) {
+      step(sim, 1 / 60)
+      for (const h of sim.tubes[0].heights) peak = Math.max(peak, Math.abs(h))
+    }
+    // Big enough to read as water being hit, well under a unit of height.
+    expect(peak).toBeGreaterThan(1)
+    expect(peak).toBeLessThanOrEqual(MAX_WAVE)
   })
 
   it('survives a huge dt without producing NaN', () => {

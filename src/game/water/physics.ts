@@ -21,7 +21,7 @@ import type { ColorId } from '../types'
 /** Wave samples across one tube. More samples = smoother surface, more cost. */
 export const WAVE_SAMPLES = 20
 /** Max surface displacement, px. */
-export const MAX_WAVE = 16
+export const MAX_WAVE = 9
 
 const FIXED_DT = 1 / 240
 const MAX_DT = 0.05
@@ -29,12 +29,13 @@ const MAX_DT = 0.05
 const WAVE_C2 = 130
 /** Gravity restoring the surface to flat (1/s²). Without this, a uniform
  *  displacement would be conserved forever by the wave equation. */
-const WAVE_RESTORE = 30
-/** Wave amplitude decay per second. */
-const WAVE_DAMPING = 1.6
+const WAVE_RESTORE = 70
+/** Wave amplitude decay per second. High enough that a splash is over in
+ *  well under a second, rather than sloshing while the player moves on. */
+const WAVE_DAMPING = 11
 /** Layer height spring stiffness (1/s²) and damping (1/s). */
-const SPRING_K = 120
-const SPRING_DAMPING = 11
+const SPRING_K = 240
+const SPRING_DAMPING = 20
 /** Particle gravity by kind, px/s². */
 const GRAVITY: Record<ParticleKind, number> = {
   droplet: 1500,
@@ -42,8 +43,13 @@ const GRAVITY: Record<ParticleKind, number> = {
   confetti: 240,
 }
 
-const SETTLE_WAVE = 0.02
-const SETTLE_VEL = 0.1
+/**
+ * Sleep thresholds. Chosen to be visually invisible — a quarter pixel of
+ * surface and a layer off its target by 1/100 of a unit cannot be seen — so
+ * the render loop can stop repainting well within the post-pour budget.
+ */
+const SETTLE_WAVE = 0.25
+const SETTLE_VEL = 0.6
 const SETTLE_LAYER = 0.01
 
 /* --------------------------------------------------------------- types ---- */
@@ -196,16 +202,6 @@ export function waveImpulse(sim: Sim, index: number, xFrac: number, strength: nu
   for (let i = 0; i < n; i++) {
     const d = i / (n - 1) - xFrac
     tube.velocities[i] += strength * Math.exp(-(d * d) / 0.02)
-  }
-}
-
-/** Kick the whole surface sideways-inclined, as when a tube is moved. */
-export function slosh(sim: Sim, index: number, strength: number): void {
-  const tube = sim.tubes[index]
-  if (!tube) return
-  const n = tube.heights.length
-  for (let i = 0; i < n; i++) {
-    tube.velocities[i] += strength * (i / (n - 1) - 0.5)
   }
 }
 
