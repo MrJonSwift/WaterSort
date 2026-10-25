@@ -321,7 +321,15 @@ body {
 /* -------------------------------------------------------------- banner ---- */
 
 .banner {
-  width: 100%;
+  /*
+   * Overlay the board's empty "sky" rather than taking part in page layout:
+   * at 360x640 a win must not push the page into scrolling.
+   */
+  position: absolute;
+  top: 0.5rem;
+  left: 0.75rem;
+  right: 0.75rem;
+  z-index: 3;
   margin: 0;
   padding: 0.8rem 1rem;
   text-align: center;
@@ -331,6 +339,7 @@ body {
   color: #c9ffe9;
   font-weight: 700;
   box-shadow: 0 10px 24px -12px rgba(23, 217, 158, 0.8);
+  pointer-events: none;
   animation: banner-in 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 

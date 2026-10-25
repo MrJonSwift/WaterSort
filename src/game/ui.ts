@@ -107,6 +107,14 @@ export function createUI(root: HTMLElement, handlers: UIHandlers): UI {
   board.setAttribute('role', 'group')
   board.setAttribute('aria-label', 'Tubes')
 
+  // The banner lives inside the board so it can overlay the empty "sky" above
+  // the tubes without adding page height. It is out of the grid flow.
+  const banner = document.createElement('p')
+  banner.className = 'banner'
+  banner.setAttribute('role', 'status')
+  banner.hidden = true
+  board.append(banner)
+
   const controls = document.createElement('div')
   controls.className = 'controls'
   const undoBtn = document.createElement('button')
@@ -126,12 +134,7 @@ export function createUI(root: HTMLElement, handlers: UIHandlers): UI {
   const pourToggle = makeToggle('Pour FX', handlers.onTogglePourFx)
   toggles.append(soundToggle.root, pourToggle.root)
 
-  const banner = document.createElement('p')
-  banner.className = 'banner'
-  banner.setAttribute('role', 'status')
-  banner.hidden = true
-
-  root.append(hud, board, controls, toggles, banner)
+  root.append(hud, board, controls, toggles)
 
   function ensureTubes(count: number): HTMLButtonElement[] {
     const existing = board.querySelectorAll<HTMLButtonElement>('.tube')
@@ -151,6 +154,9 @@ export function createUI(root: HTMLElement, handlers: UIHandlers): UI {
       board.append(tube)
       tubes.push(tube)
     }
+    // `replaceChildren()` above also removed the banner; keep it across a
+    // tube-count change (level 3 to level 4 is 5 to 6 tubes).
+    board.append(banner)
     return tubes
   }
 

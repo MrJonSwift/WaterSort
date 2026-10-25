@@ -10,7 +10,14 @@
  * The same level number yields the same board on every device.
  */
 import { clampLevel, levelConfig, type LevelConfig } from './levels'
-import { DEFAULT_CAPACITY, isComplete, isWon, topColor, topRun } from './rules'
+import {
+  DEFAULT_CAPACITY,
+  isComplete,
+  isWon,
+  pour,
+  topColor,
+  topRun,
+} from './rules'
 import type { ColorId, GameState, Move, Tube } from './types'
 
 export interface Level {
@@ -131,6 +138,32 @@ interface Attempt {
   mixed: boolean
 }
 
+/**
+ * Cut dead weight off the end of a solution.
+ *
+ * A reverse move may lift a whole single-colour run onto an empty tube: its
+ * inverse then relocates an already-complete tube and is never needed, because
+ * the board is won before it can be played. Replaying the inverses and stopping
+ * at the first win keeps the recorded solution honest without changing the
+ * board or the reverse-move rules.
+ */
+function trimSolution(board: ColorId[][], solution: Move[], capacity: number): Move[] {
+  let state: GameState = {
+    tubes: board.map((colors) => ({ colors: [...colors] })),
+    capacity,
+    selected: null,
+    moves: 0,
+    history: [],
+    won: false,
+  }
+
+  for (let i = 0; i < solution.length; i++) {
+    state = pour(state, solution[i].from, solution[i].to)
+    if (isWon(state)) return solution.slice(0, i + 1)
+  }
+  return solution
+}
+
 /** One scramble attempt. Always returns a legal, solvable board when possible. */
 function attempt(config: LevelConfig, seed: number): Attempt {
   const capacity = DEFAULT_CAPACITY
@@ -160,8 +193,9 @@ function attempt(config: LevelConfig, seed: number): Attempt {
   }
 
   const board = tubes.map((tube) => [...tube.colors])
+  const solution = trimSolution(board, inverses.reverse(), capacity)
   return {
-    level: { board, solution: inverses.reverse() },
+    level: { board, solution },
     mixed: completed && passesQuality(board, colors, scramble, capacity),
   }
 }

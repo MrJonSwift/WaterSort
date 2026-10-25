@@ -5,8 +5,8 @@ import {
   type Level,
 } from './generator'
 import { LEVELS, MAX_LEVEL, levelConfig, type LevelConfig } from './levels'
-import { DEFAULT_CAPACITY, isComplete, isWon, pour } from './rules'
-import { createGame } from './state'
+import { DEFAULT_CAPACITY, isComplete, isWon } from './rules'
+import { createGame, tap } from './state'
 import type { GameState } from './types'
 
 const CAP = DEFAULT_CAPACITY
@@ -25,16 +25,19 @@ function runCount(board: readonly (readonly number[])[]): number {
 function replay(level: Level): GameState {
   let state = createGame(level.board)
   for (const move of level.solution) {
-    const next = pour(state, move.from, move.to)
-    // A null/illegal pour returns the same state, so identity proves legality.
-    expect(next).not.toBe(state)
-    expect(next.moves).toBe(state.moves + 1)
-    expect(next.history[next.history.length - 1]).toEqual({
+    const before = state
+    const selected = tap(state, move.from)
+    // The source must be selectable, not empty and not already won.
+    expect(selected).not.toBe(before)
+    expect(selected.selected).toBe(move.from)
+
+    state = tap(selected, move.to)
+    expect(state.moves).toBe(before.moves + 1)
+    expect(state.history[state.history.length - 1]).toEqual({
       from: move.from,
       to: move.to,
       amount: move.amount,
     })
-    state = next
   }
   return state
 }
@@ -55,7 +58,10 @@ function expectHardRequirements(level: Level, config: LevelConfig): void {
   const state = createGame(level.board)
   expect(state.tubes.some((tube) => isComplete(tube, CAP))).toBe(false)
   expect(isWon(state)).toBe(false)
-  expect(isWon(replay(level))).toBe(true)
+
+  const finished = replay(level)
+  expect(isWon(finished)).toBe(true)
+  expect(finished.moves).toBe(level.solution.length)
 }
 
 describe('generateBoard', () => {
@@ -87,7 +93,8 @@ describe('generateBoard', () => {
         if (!level) continue
         produced++
         expectHardRequirements(level, config)
-        expect(level.solution).toHaveLength(config.scramble)
+        expect(level.solution.length).toBeGreaterThan(0)
+        expect(level.solution.length).toBeLessThanOrEqual(config.scramble)
         expect(runCount(level.board)).toBeGreaterThanOrEqual(threshold)
       }
 
@@ -112,6 +119,15 @@ describe('generateLevel', () => {
     for (let level = 1; level <= MAX_LEVEL; level++) {
       expectHardRequirements(generateLevel(level), levelConfig(level))
     }
+  })
+
+  it('records only the moves needed to win', () => {
+    // Pours actually needed, replayed through tap(); trailing relocations are
+    // dropped so a solution can never contain a move after the win.
+    const needed = [4, 8, 9, 7]
+    needed.forEach((count, index) => {
+      expect(generateLevel(index + 1).solution).toHaveLength(count)
+    })
   })
 
   it('gives the four levels different boards', () => {
